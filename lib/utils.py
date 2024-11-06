@@ -12,6 +12,12 @@ import cv2
 import numpy as np
 import pyautogui
 
+try:
+    import chromedriver_autoinstaller
+    chromedriver_autoinstaller.install()
+except:
+    print('Impossible de charger chromedriver ... ')
+
 def get_data_from_overpass():
     # Requête Overpass pour récupérer les POI à Paris intramuros
     overpass_url = "http://overpass-api.de/api/interpreter"
@@ -84,7 +90,6 @@ def find_and_click_button(template_path):
         print("Le bouton n'a pas été trouvé.")
 
 
-
 def resume_from_last_extraction(input_file, output_file):
     # Charger le fichier d'adresses à traiter
     adresses_df = pd.read_csv(input_file, sep=";", usecols=["voie_nom", "commune_nom", "commune_insee"])
@@ -104,7 +109,6 @@ def resume_from_last_extraction(input_file, output_file):
         unprocessed_df = adresses_df
 
     return unprocessed_df
-
 
 
 def get_data_from_referenceloyer():
