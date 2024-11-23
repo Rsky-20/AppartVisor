@@ -11,6 +11,7 @@ import os
 import cv2
 import numpy as np
 import pyautogui
+import tqdm
 
 try:
     import chromedriver_autoinstaller
@@ -46,48 +47,35 @@ def get_data_from_overpass():
     df_poi.to_csv('data/poi_paris.csv', index=False, encoding='utf-8')  
 
 
-def find_and_click_button(template_path):
-    # Pause pour laisser le temps de tout charger
-    time.sleep(2)
+def simplify_ban(input_file='data/adresses-ban.csv', output_file='data/simplified_ban.csv'):
+    """
+    Simplifie la base de données des adresses en conservant uniquement les colonnes utiles
+    et les noms de rue uniques.
 
-    # Capture d'écran de la fenêtre complète
-    screenshot = pyautogui.screenshot()
-    screenshot = np.array(screenshot)
+    :param input_file: Chemin vers le fichier CSV original
+    :param output_file: Chemin vers le fichier CSV simplifié (par défaut 'simplified_ban.csv')
+    """
+    # Charger le fichier CSV
+    df = pd.read_csv(input_file, sep=';')
 
-    # Convertir l'image en RGB pour OpenCV (car PyAutoGUI utilise un format différent)
-    screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB)
+    # Normaliser les noms de colonnes
+    df.columns = df.columns.str.strip()
 
-    # Charger l'image du bouton "Valider" (template) que tu veux détecter
-    template = cv2.imread(template_path, cv2.IMREAD_COLOR)
-    w, h = template.shape[:-1]
+    # Vérifier la présence des colonnes nécessaires
+    required_columns = ['commune_nom', 'voie_nom', 'commune_insee']
+    if not all(col in df.columns for col in required_columns):
+        raise KeyError(f"Colonnes manquantes dans le fichier : {set(required_columns) - set(df.columns)}")
 
-    # Faire correspondre l'image du template avec la capture d'écran
-    result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+    # Garder uniquement les colonnes nécessaires
+    df = df[required_columns]
 
-    # Définir un seuil pour la correspondance
-    threshold = 0.8
-    loc = np.where(result >= threshold)
+    # Supprimer les doublons basés sur 'voie_nom' et 'commune_insee'
+    df = df.drop_duplicates(subset=['voie_nom', 'commune_insee'])
 
-    # Si le template est trouvé, cliquer à cet endroit
-    if len(loc[0]) > 0:
-        # Prendre la première correspondance (on peut améliorer si nécessaire)
-        pt = (loc[1][0], loc[0][0])
-        center_x, center_y = pt[0] + w // 2, pt[1] + h // 2
+    # Enregistrer le fichier nettoyé
+    df.to_csv(output_file, index=False, sep=';')
+    print(f"Le fichier simplifié a été enregistré sous {output_file}")
 
-        # Compensation (par exemple, ajouter 10 pixels à droite et 20 pixels en hauteur)
-        compensation_x = 70  # Ajuster à droite de 10 pixels
-        compensation_y = -90  # Ajuster vers le haut de 20 pixels
-
-        # Appliquer la compensation
-        center_x += compensation_x
-        center_y += compensation_y
-
-        # Utiliser pyautogui pour cliquer à l'endroit détecté
-        pyautogui.moveTo(center_x, center_y, duration=1)  # Déplacer la souris vers le centre du bouton ajusté
-        pyautogui.click()  # Simuler le clic
-        print(f"Clicked at: {center_x}, {center_y} (with compensation)")
-    else:
-        print("Le bouton n'a pas été trouvé.")
 
 
 def resume_from_last_extraction(input_file, output_file):
@@ -111,7 +99,7 @@ def resume_from_last_extraction(input_file, output_file):
     return unprocessed_df
 
 
-def get_data_from_referenceloyer():
+def get_data_from_referenceloyer(ban_path = "data/simplified-ban.csv", output_file = 'data/loyers_paris_adresses.csv'):
     
     driver = webdriver.Chrome()
     # Maximiser la fenêtre pour qu'elle soit en plein écran
@@ -121,14 +109,9 @@ def get_data_from_referenceloyer():
     url = "http://www.referenceloyer.drihl.ile-de-france.developpement-durable.gouv.fr/paris/"
     driver.get(url)
     time.sleep(1)
-
-    # Charger le fichier CSV 'adresses-ban.csv' en ne gardant que les colonnes nécessaires
-    csv_path = "data/adresses-ban.csv"
-    # Fichier CSV pour la sauvegarde progressive
-    output_file = 'data/loyers_paris_adresses.csv'
     
     #adresses_df = pd.read_csv(csv_path, sep=";", usecols=["voie_nom", "commune_nom", "commune_insee"])
-    unprocessed_addresses = resume_from_last_extraction(csv_path, output_file)
+    unprocessed_addresses = resume_from_last_extraction(ban_path, output_file)
 
 
     # Options disponibles pour le nombre de pièces, époque de construction, et type de location
@@ -137,7 +120,8 @@ def get_data_from_referenceloyer():
     locations_options = ['meublée', 'non meublée']
     
     # Parcourir les adresses du fichier CSV
-    for index, row in unprocessed_addresses.iterrows():
+    for index, row in tqdm.tqdm(unprocessed_addresses.iterrows(), total=unprocessed_addresses.shape[0], desc="Traitement des adresses"):
+
         try:
             # Construire l'adresse sous forme "nom_de_rue, code_postale nom_commune"
             adresse_complete = f"{row['voie_nom']}, {row['commune_insee']} {row['commune_nom']}"
@@ -189,9 +173,7 @@ def get_data_from_referenceloyer():
                                 pass
                             
                             time.sleep(0.1)  # Attendre que la page se recharge
-                            
-                            #find_and_click_button('bouton_valide_2.png')
-                                                        
+                                                                                    
                             #loyers = driver.find_element(By.CLASS_NAME, 'loyers')
                             #driver.execute_script("arguments[0].scrollIntoView(true);", loyers)
 
@@ -223,7 +205,7 @@ def get_data_from_referenceloyer():
 
 
 if __name__=='__main__':
+    simplify_ban()
     #get_data_from_overpass()
-    get_data_from_referenceloyer()
+    #get_data_from_referenceloyer()
     #time.sleep(4)
-    #find_and_click_button('bouton_valider.png')
