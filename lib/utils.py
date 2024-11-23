@@ -205,7 +205,7 @@ def get_data_from_referenceloyer(ban_path = "data/simplified-ban.csv", output_fi
 
 
 if __name__=='__main__':
-    simplify_ban()
+    #simplify_ban()
     #get_data_from_overpass()
-    #get_data_from_referenceloyer()
+    get_data_from_referenceloyer()
     #time.sleep(4)
