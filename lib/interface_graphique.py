@@ -3,7 +3,7 @@ from tkinter import messagebox
 from tkintermapview import TkinterMapView
 from geopy.geocoders import Nominatim
 import pandas as pd
-
+import numpy as np
 data_loyer = pd.read_csv("loyers_paris_adresses.csv")
 
 typo = "Arial"
@@ -29,14 +29,12 @@ def traitement_adresse(adresse):
     
     for i in liste:
         trimmed = i.strip().lower()  # Nettoyer et mettre en minuscule pour comparaison
-        print(f"Traitement de : '{trimmed}'")  # Débogage
 
         # Vérifie si l'élément contient un mot-clé d'adresse
         if any(abrev in trimmed for abrev in list_abreviation):
             add += i.strip() + ", "  # Garde l'élément d'origine avec espaces enlevés
         # Vérifie si l'élément est un code postal parisien
         elif trimmed.isdigit() and trimmed.startswith("75"):
-            print(f"Code postal trouvé : {'75'+'1'+trimmed[-2:]}")
             add_num = '75'+'1'+trimmed[-2:] # Garde le code postal exact
     
     # Gérer le cas où le code postal n'a pas été trouvé
@@ -68,7 +66,7 @@ def get_user_inputs(frame2, adresse_var):
     pieces = tk.IntVar()
     prix_total = tk.IntVar()
     meuble = tk.StringVar(value="Non Meublé")
-
+    date_cons = tk.StringVar(value="None")
     def update_age(value):
         int_value = int(float(value) * 99)
         age.set(int_value)
@@ -83,6 +81,7 @@ def get_user_inputs(frame2, adresse_var):
             "Nombre de pièces": [pieces.get()],
             "Prix total (€)": [prix_total.get()],
             "Type": [meuble.get()],
+            "date de construction":[date_cons.get()],
             "Adresse": [adresse_var.get()]
         })
         # Call the estimation display function
@@ -90,17 +89,34 @@ def get_user_inputs(frame2, adresse_var):
         affichage_estimation(estimation, frame2)
         data_user["Adresse"]= traitement_adresse(data_user["Adresse"][0])
         if data_user["Adresse"][0] in data_loyer["Adresse"].values:
-            print(f'ce qu on done {data_user["Type"][0].lower()}' )
-            print(f'bdd: {data_loyer["Type de location"]}') 
-
-            # Filtrer les données de 'data_loyer' en fonction de plusieurs critères présents dans 'data_user'
-            loyer_associe = data_loyer.loc[
-                (data_loyer["Adresse"] == data_user.loc[0, "Adresse"]) 
-                & (data_loyer["Nombre de pièces"] == traitement_pieces(data_user["Nombre de pièces"][0]))
-                & (data_loyer["Type de location"] == data_user["Type"][0].lower())
-                ].values[5]
-
-            print(f"L'adresse est disponible. Le loyer associé est : {loyer_associe} €/m²")
+            # print(f'ce qu on done {data_user["date de construction"][0]}' )
+            # # print(f'bdd: {data_loyer["Type de location"]}') 
+            # print(f'ce qu on a: {data_loyer["Époque de construction"]}')
+            # # Filtrer les données de 'data_loyer' en fonction de plusieurs critères présents dans 'data_user'
+            if data_user["date de construction"][0]!="None":
+                loyer_associe = data_loyer.loc[
+                    (data_loyer["Adresse"] == data_user.loc[0, "Adresse"]) 
+                    & (data_loyer["Nombre de pièces"] == traitement_pieces(data_user["Nombre de pièces"][0]))
+                    & (data_loyer["Type de location"] == data_user["Type"][0].lower())
+                    & (data_loyer["Époque de construction"] == data_user["date de construction"][0])
+                    ].values
+                print(f"L'adresse est disponible. Le loyer associé est : {loyer_associe[0][-2]} €/m²") #a changer par: loyer_associe[-2]
+                
+            else: 
+                loyer_associe = data_loyer.loc[
+                    (data_loyer["Adresse"] == data_user.loc[0, "Adresse"]) 
+                    & (data_loyer["Nombre de pièces"] == traitement_pieces(data_user["Nombre de pièces"][0]))
+                    & (data_loyer["Type de location"] == data_user["Type"][0].lower())
+                    ].values
+                
+                prix = []
+                
+                for i in range(len(loyer_associe)):
+                    prix.append(loyer_associe[i][-2])
+                
+                print(f"L'adresse est disponible. Le loyer associé est : {np.mean(prix)} €/m²")
+                
+            
         else:
             print("L'adresse n'est pas disponible.")
 
@@ -126,6 +142,14 @@ def get_user_inputs(frame2, adresse_var):
     tk.Radiobutton(frame2, text="Meublée", variable=meuble, value="Meublée", font=(typo, taille_ecriture)).pack()
     tk.Radiobutton(frame2, text="Non Meublée", variable=meuble, value="Non Meublée", font=(typo, taille_ecriture)).pack()
 
+    tk.Label(frame2, text="Date de construction:", font=(typo, taille_ecriture)).pack(pady=10)
+    tk.Radiobutton(frame2, text="avant 1946", variable=date_cons, value="avant 1946", font=(typo, taille_ecriture)).pack()
+    tk.Radiobutton(frame2, text="1946-1970", variable=date_cons, value="1946-1970", font=(typo, taille_ecriture)).pack()
+    tk.Radiobutton(frame2, text="1971-1990", variable=date_cons, value="1971-1990", font=(typo, taille_ecriture)).pack()
+    tk.Radiobutton(frame2, text="après 1990", variable=date_cons, value="après 1990", font=(typo, taille_ecriture)).pack()
+    tk.Radiobutton(frame2, text="None", variable=date_cons, value="None", font=(typo, taille_ecriture)).pack()
+    
+    
     bouton = tk.Button(frame2, text="Estimer", command=validate_all, font=(typo, taille_ecriture, "italic"))
     bouton.pack(pady=20)
 
