@@ -12,6 +12,15 @@ taille_ecriture = 12
 # Global variable to hold the DataFrame
 data_user = pd.DataFrame()
 
+def traitement_pieces(pieces):
+    
+    if pieces == 1:
+        return str(pieces)+" pièce"
+    if pieces >=4:
+        return "4 pièces et plus"
+    else:
+        return str(pieces)+" pièces"
+
 def traitement_adresse(adresse):
     add = ""
     add_num = ""  # Initialiser add_num pour éviter les erreurs
@@ -79,11 +88,18 @@ def get_user_inputs(frame2, adresse_var):
         # Call the estimation display function
         estimation = "un bon appartement"
         affichage_estimation(estimation, frame2)
-        print(data_user["Adresse"][0])
         data_user["Adresse"]= traitement_adresse(data_user["Adresse"][0])
-        print(data_user["Adresse"])
         if data_user["Adresse"][0] in data_loyer["Adresse"].values:
-            loyer_associe = data_loyer.loc[data_loyer["Adresse"] == data_user["Adresse"][0], "Loyer médian (€/m²)"].values[0]
+            print(f'ce qu on done {data_user["Type"][0].lower()}' )
+            print(f'bdd: {data_loyer["Type de location"]}') 
+
+            # Filtrer les données de 'data_loyer' en fonction de plusieurs critères présents dans 'data_user'
+            loyer_associe = data_loyer.loc[
+                (data_loyer["Adresse"] == data_user.loc[0, "Adresse"]) 
+                & (data_loyer["Nombre de pièces"] == traitement_pieces(data_user["Nombre de pièces"][0]))
+                & (data_loyer["Type de location"] == data_user["Type"][0].lower())
+                ].values[5]
+
             print(f"L'adresse est disponible. Le loyer associé est : {loyer_associe} €/m²")
         else:
             print("L'adresse n'est pas disponible.")
@@ -107,8 +123,8 @@ def get_user_inputs(frame2, adresse_var):
     tk.Entry(frame2, textvariable=prix_total, font=(typo, taille_ecriture)).pack(pady=10)
 
     tk.Label(frame2, text="Type:", font=(typo, taille_ecriture)).pack(pady=10)
-    tk.Radiobutton(frame2, text="Meublé", variable=meuble, value="Meublé", font=(typo, taille_ecriture)).pack()
-    tk.Radiobutton(frame2, text="Non Meublé", variable=meuble, value="Non Meublé", font=(typo, taille_ecriture)).pack()
+    tk.Radiobutton(frame2, text="Meublée", variable=meuble, value="Meublée", font=(typo, taille_ecriture)).pack()
+    tk.Radiobutton(frame2, text="Non Meublée", variable=meuble, value="Non Meublée", font=(typo, taille_ecriture)).pack()
 
     bouton = tk.Button(frame2, text="Estimer", command=validate_all, font=(typo, taille_ecriture, "italic"))
     bouton.pack(pady=20)
