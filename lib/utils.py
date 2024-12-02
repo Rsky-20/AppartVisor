@@ -46,6 +46,32 @@ def get_data_from_overpass():
     # Enregistrer en fichier CSV
     df_poi.to_csv('data/poi_paris.csv', index=False, encoding='utf-8')  
 
+def get_unique_poi_types(filepath='data/poi_paris.csv'):
+    """
+    Lit un fichier CSV contenant des POI et retourne une liste des types uniques.
+    
+    :param filepath: Chemin du fichier CSV contenant les POI (par défaut 'data/poi_paris.csv').
+    :return: Liste des types uniques de POI.
+    """
+    # Charger les données depuis le fichier CSV
+    try:
+        df_poi = pd.read_csv(filepath)
+        
+        # Vérifier si la colonne "type" existe
+        if 'type' not in df_poi.columns:
+            raise ValueError(f"La colonne 'type' n'existe pas dans le fichier {filepath}")
+        
+        # Obtenir les types uniques
+        unique_types = df_poi['type'].dropna().unique().tolist()
+        
+        return unique_types
+    except FileNotFoundError:
+        print(f"Erreur : Le fichier {filepath} est introuvable.")
+        return []
+    except Exception as e:
+        print(f"Erreur : {e}")
+        return []
+
 
 def simplify_ban(input_file='data/adresses-ban.csv', output_file='data/simplified_ban.csv'):
     """
