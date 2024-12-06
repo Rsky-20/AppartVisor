@@ -17,6 +17,8 @@ from sklearn.pipeline import Pipeline
 import tensorflow as tf
 from tensorflow.keras import layers, models
 import os
+from tqdm import tqdm
+
 
 from collections import Counter
 
@@ -41,12 +43,14 @@ def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
 
     # Vérification et création du dossier
     os.makedirs('dataset', exist_ok=True)
+    print('[Start] - Merge Dataset')
 
     # Chargement des fichiers CSV
     adresses_df = pd.read_csv(adress_dataset_filepath, delimiter=';')
     poi_df = pd.read_csv(poi_paris_dataset_filepath)
     loyers_df = pd.read_csv(loyers_paris_adresses_filepath)
 
+    print('[RUN PROCESS] - Data cleanning')
     # Nettoyage des colonnes et filtrage
     adresses_df.columns = adresses_df.columns.str.strip().str.replace(r'[^A-Za-z0-9_]', '', regex=True)
     adresses_df_filtered = adresses_df[['cle_interop', 'commune_nom', 'voie_nom', 'numero', 'long', 'lat']].dropna()
@@ -68,7 +72,8 @@ def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
                                     'Loyer maximum (€/m²)']].dropna()
 
     loyers_df_filtered['voie_nom'] = loyers_df_filtered['Adresse'].apply(lambda x: x.split(',')[0])
-
+    
+    print('[RUN PROCESS] - Merge Data into DataFrame')
     # Fusion des adresses et des loyers
     merged_adresses_loyers = pd.merge(adresses_df_filtered, loyers_df_filtered, on='voie_nom', how='inner')
 
@@ -82,6 +87,7 @@ def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
         'community_centre': 3, 'yoga_studio': 3, 'dojo': 3, 'sports_centre': 4
     }
 
+    print('[RUN PROCESS] - POI cleanning')
     # KDTree pour trouver les POI proches
     poi_coords = np.array(list(zip(poi_df_filtered['latitude'], poi_df_filtered['longitude'])))
     poi_tree = KDTree(poi_coords)
@@ -93,6 +99,7 @@ def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
     # Création de colonne pour chaque type de POI
     poi_types = interesting_pois  # List de types de POI
     
+    print('[RUN PROCESS] - Count POI by type')
     for poi_type in poi_types:
         merged_adresses_loyers[f'num_{poi_type}'] = merged_adresses_loyers['Nearby_POI_Counts'].apply(
             lambda x: x.get(poi_type, 0)  # Obtenir le nombre pour le POI, 0 par défault s'il n'y en a pas.
@@ -122,6 +129,7 @@ def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
         calculate_poi_weights, tree=poi_tree, poi_df=poi_df_filtered, weights_dict=poi_weights, axis=1
     )
 
+    print('[RUN PROCESS] - Separate DataFrame as data chunk')
     # Écriture des résultats dans des fichiers CSV segmentés
     max_file_size_bytes = max_file_size_gb * 1024 * 1024 * 1024
     current_file_index = 1
@@ -145,7 +153,7 @@ def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
         current_file_size += chunk_size_bytes
         header_written = True
 
-    print(f"Les fichiers CSV ont été générés avec le préfixe '{output_prefix}'.")
+        print(f"[END PROCESS] - Save chunk file : '{output_file}'.")
 
 
 def predict_Paris_renting_good_price(merged_adress_loyers_filepath='merged_adresses_loyers.csv'):
@@ -155,8 +163,8 @@ def predict_Paris_renting_good_price(merged_adress_loyers_filepath='merged_adres
     # Sélectionner les colonnes pour la prédiction
     # Update the features to include the new POI count columns
     poi_count_features = [f'num_{poi}' for poi in interesting_pois]
-    X = merged_adresses_loyers[['lat', 'long', 'Loyer minimum (€/m²)', 'Loyer maximum (€/m²)'] + poi_count_features]
-    y = merged_adresses_loyers['Loyer médian (€/m²)']
+    X = data[['lat', 'long', 'Loyer minimum (€/m²)', 'Loyer maximum (€/m²)'] + poi_count_features]
+    y = data['Loyer médian (€/m²)']
 
     # Colonne cible: prédiction du loyer médian
     
