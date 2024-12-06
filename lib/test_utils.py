@@ -18,6 +18,20 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 import os
 
+from collections import Counter
+
+def calculate_poi_counts(row, tree, poi_df, tolerance_km=0.5):
+    """
+    Calcule le nombre de POIs proches pour chaque type.
+    """
+    tolerance_deg = tolerance_km / 111  # Convert kilometers to degrees (approximation for latitude/longitude)
+    lat_lon = (row['lat'], row['long'])
+    idxs = tree.query_ball_point(lat_lon, tolerance_deg)
+    nearby_pois = poi_df.iloc[idxs]['type'].values
+
+    # Compter le nombre de POIs par type
+    poi_counts = Counter(nearby_pois)
+    return poi_counts
 
 def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
                   poi_paris_dataset_filepath='poi_paris 1.csv',
@@ -71,6 +85,24 @@ def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
     # KDTree pour trouver les POI proches
     poi_coords = np.array(list(zip(poi_df_filtered['latitude'], poi_df_filtered['longitude'])))
     poi_tree = KDTree(poi_coords)
+    
+    # Application de la fonction pour calculer le nombre de POI pour chaque appartement
+    merged_adresses_loyers['Nearby_POI_Counts'] = merged_adresses_loyers.apply(
+        calculate_poi_counts, tree=poi_tree, poi_df=poi_df_filtered, axis=1
+    )
+    # Création de colonne pour chaque type de POI
+    poi_types = interesting_pois  # List de types de POI
+    
+    for poi_type in poi_types:
+        merged_adresses_loyers[f'num_{poi_type}'] = merged_adresses_loyers['Nearby_POI_Counts'].apply(
+            lambda x: x.get(poi_type, 0)  # Obtenir le nombre pour le POI, 0 par défault s'il n'y en a pas.
+        )
+    
+    # Droping the 'Nearby_POI_Counts' column after processing
+    merged_adresses_loyers.drop(columns=['Nearby_POI_Counts'], inplace=True)
+
+
+
 
     def calculate_poi_weights(row, tree, poi_df, weights_dict, tolerance_km=0.5):
         """
@@ -121,9 +153,13 @@ def predict_Paris_renting_good_price(merged_adress_loyers_filepath='merged_adres
     data = pd.read_csv(merged_adress_loyers_filepath)
 
     # Sélectionner les colonnes pour la prédiction
-    X = data[['lat', 'long', 'Loyer minimum (€/m²)', 'Loyer maximum (€/m²)', 'commune_nom', 'Nearby_POIs']]
-    y = data['Loyer médian (€/m²)']  # Colonne cible: prédiction du loyer médian
+    # Update the features to include the new POI count columns
+    poi_count_features = [f'num_{poi}' for poi in interesting_pois]
+    X = merged_adresses_loyers[['lat', 'long', 'Loyer minimum (€/m²)', 'Loyer maximum (€/m²)'] + poi_count_features]
+    y = merged_adresses_loyers['Loyer médian (€/m²)']
 
+    # Colonne cible: prédiction du loyer médian
+    
     # Diviser les données en ensembles d'entraînement et de test (80% entraînement, 20% test)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
