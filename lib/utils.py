@@ -43,8 +43,13 @@ def get_data_from_overpass():
 
     # Transformer en DataFrame pour une meilleure visualisation
     df_poi = pd.DataFrame(poi_list)
+
+    # Filtrer les POI uniques
+    df_unique_poi = df_poi.drop_duplicates(subset=['type'])
+    
+
     # Enregistrer en fichier CSV
-    df_poi.to_csv('data/poi_paris.csv', index=False, encoding='utf-8')  
+    df_poi.to_csv('data/poi_paris.csv', index=False, encoding='utf-8')
 
 def get_unique_poi_types(filepath='data/poi_paris.csv'):
     """
@@ -233,5 +238,5 @@ def get_data_from_referenceloyer(ban_path = "data/simplified-ban.csv", output_fi
 if __name__=='__main__':
     #simplify_ban()
     #get_data_from_overpass()
-    get_data_from_referenceloyer()
+    get_unique_poi_types(filepath='D:\\IPSA\Aero5\\2.15_au513_Conception_des_systemes_prototypage_rapide\\AppartVisor\\data\\poi_paris.csv')
     #time.sleep(4)
