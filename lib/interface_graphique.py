@@ -44,6 +44,13 @@ def traitement_adresse(adresse):
     return add + add_num + " Paris"
 
 
+def validate_address():
+    address = adresse_var.get()
+    if address.strip():  # Vérifie que l'adresse n'est pas vide
+        messagebox.showinfo("Adresse entrée", f"Adresse ajoutée :\n{address}")
+    else:
+        messagebox.showwarning("Erreur", "Veuillez entrer une adresse valide.")
+
 def get_address_from_coordinates(lat, lon):
     geolocator = Nominatim(user_agent="map_app")
     location = geolocator.reverse((lat, lon), language='en')
@@ -108,13 +115,11 @@ def get_user_inputs(frame2, adresse_var):
                     & (data_loyer["Nombre de pièces"] == traitement_pieces(data_user["Nombre de pièces"][0]))
                     & (data_loyer["Type de location"] == data_user["Type"][0].lower())
                     ].values
+                columns = ['Address', 'Nombre de pièces', 'Époque de construction', 'Type de location', 'min', 'moyen', 'max']
+                df_moyenne_prix = pd.DataFrame(loyer_associe, columns=columns)                
+
                 
-                prix = []
-                
-                for i in range(len(loyer_associe)):
-                    prix.append(loyer_associe[i][-2])
-                
-                print(f"L'adresse est disponible. Le loyer associé est : {np.mean(prix)} €/m²")
+                print(f"L'adresse est disponible. Le loyer associé est : {np.mean(df_moyenne_prix['moyen'])} €/m²")
                 
             
         else:
@@ -150,6 +155,7 @@ def get_user_inputs(frame2, adresse_var):
     tk.Radiobutton(frame2, text="None", variable=date_cons, value="None", font=(typo, taille_ecriture)).pack()
     
     
+    
     bouton = tk.Button(frame2, text="Estimer", command=validate_all, font=(typo, taille_ecriture, "italic"))
     bouton.pack(pady=20)
 
@@ -179,14 +185,21 @@ def fenetre_graph():
     
     frame2 = tk.LabelFrame(fenetre, text="Paramètres", width=20, height=20)
     frame2.pack(ipadx=2010, ipady=510, side="right", fill="both")
+       
+    
     
     map_widget = TkinterMapView(frame1, width=2000, height=1000)
     map_widget.pack(fill="both")
-    
+    # Champ pour entrer une adresse manuellement
     map_widget.set_position(48.8566, 2.3522)
     map_widget.set_zoom(12)
 
     adresse_var = tk.StringVar(value="")
+    tk.Label(frame1, text="Entrer une adresse :", font=(typo, taille_ecriture)).pack(pady=5, side="top")
+    adresse_entry = tk.Entry(frame1, textvariable=adresse_var, font=(typo, taille_ecriture), width=50)
+    adresse_entry.pack(pady=5, side="top")
+
+    tk.Button(frame1, text="Valider l'adresse", command=validate_address, font=(typo, taille_ecriture)).pack(pady=5, side="top")
     bouton_add_point = tk.Button(frame1, text="Ajouter un point", command=lambda: activate_map_click_mode(map_widget, adresse_var), font=(typo, taille_ecriture))
     bouton_add_point.pack(pady=10, side="bottom")
 
