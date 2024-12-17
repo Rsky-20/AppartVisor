@@ -22,34 +22,54 @@ def traitement_pieces(pieces):
         return str(pieces)+" pièces"
 
 def traitement_adresse(adresse):
-    add = ""
-    add_num = ""  # Initialiser add_num pour éviter les erreurs
-    list_abreviation = ["rue", "impasse", "square"]
-    liste = adresse.split(",")
     
-    for i in liste:
-        trimmed = i.strip().lower()  # Nettoyer et mettre en minuscule pour comparaison
+    if mode_var.get() == "manuel":
+        adr = adresse.split(" ")
+        adr_fin = adr[1] + " " + adr[2].lower() + " " + adr[3] + " " + "751"+adr[4][0:2] + " "+ adr[-1]
+        return adr_fin
+    
+    else:
+        add = ""
+        add_num = ""  # Initialiser add_num pour éviter les erreurs
+        list_abreviation = ["rue", "impasse", "square","place"]
+        liste = adresse.split(",")
+        
+        for i in liste:
+            trimmed = i.strip().lower()  # Nettoyer et mettre en minuscule pour comparaison
+    
+            # Vérifie si l'élément contient un mot-clé d'adresse
+            if any(abrev in trimmed for abrev in list_abreviation):
+                add += i.strip() + ", "  # Garde l'élément d'origine avec espaces enlevés
+            # Vérifie si l'élément est un code postal parisien
+            elif trimmed.isdigit() and trimmed.startswith("75"):
+                add_num = '75'+'1'+trimmed[-2:] # Garde le code postal exact
+        
+        # Gérer le cas où le code postal n'a pas été trouvé
+        if not add_num:
+            add_num = "Code postal non trouvé"
+        
+        return add + add_num + " Paris"
 
-        # Vérifie si l'élément contient un mot-clé d'adresse
-        if any(abrev in trimmed for abrev in list_abreviation):
-            add += i.strip() + ", "  # Garde l'élément d'origine avec espaces enlevés
-        # Vérifie si l'élément est un code postal parisien
-        elif trimmed.isdigit() and trimmed.startswith("75"):
-            add_num = '75'+'1'+trimmed[-2:] # Garde le code postal exact
-    
-    # Gérer le cas où le code postal n'a pas été trouvé
-    if not add_num:
-        add_num = "Code postal non trouvé"
-    
-    return add + add_num + " Paris"
 
+
+
+ 
 
 def validate_address():
-    address = adresse_var.get()
-    if address.strip():  # Vérifie que l'adresse n'est pas vide
-        messagebox.showinfo("Adresse entrée", f"Adresse ajoutée :\n{address}")
+    # Vérifie si le mode sélectionné est "manuel"
+    if mode_var.get() == "manuel":
+        address = rue_var.get()
+        address = traitement_adresse(address)
+        if address != "":  # Vérifie que l'adresse n'est pas vide
+            print(f"L'adresse validée est : {address}")
+            messagebox.showinfo("Adresse entrée", f"Adresse ajoutée :\n{address}")
+        else:
+            messagebox.showwarning("Erreur", "Veuillez entrer une adresse valide.")
     else:
-        messagebox.showwarning("Erreur", "Veuillez entrer une adresse valide.")
+        messagebox.showwarning("Mode invalide", "Vous devez être en mode manuel pour valider l'adresse.")
+
+
+
 
 def get_address_from_coordinates(lat, lon):
     geolocator = Nominatim(user_agent="map_app")
@@ -82,24 +102,33 @@ def get_user_inputs(frame2, adresse_var):
     def validate_all():
         # Update global DataFrame
         global data_user
-        data_user = pd.DataFrame({
-            "Âge": [age.get()],
-            "Superficie (m²)": [surface.get()],
-            "Nombre de pièces": [pieces.get()],
-            "Prix total (€)": [prix_total.get()],
-            "Type": [meuble.get()],
-            "date de construction":[date_cons.get()],
-            "Adresse": [adresse_var.get()]
-        })
+        if adresse_var.get() == " ":
+            data_user = pd.DataFrame({
+                "Âge": [age.get()],
+                "Superficie (m²)": [surface.get()],
+                "Nombre de pièces": [pieces.get()],
+                "Prix total (€)": [prix_total.get()],
+                "Type": [meuble.get()],
+                "date de construction":[date_cons.get()],
+                "Adresse": [adresse_var.get()]
+            })
+        else :
+            data_user = pd.DataFrame({
+                "Âge": [age.get()],
+                "Superficie (m²)": [surface.get()],
+                "Nombre de pièces": [pieces.get()],
+                "Prix total (€)": [prix_total.get()],
+                "Type": [meuble.get()],
+                "date de construction":[date_cons.get()],
+                "Adresse": [rue_var.get()]
+            })
+            
         # Call the estimation display function
         estimation = "un bon appartement"
         affichage_estimation(estimation, frame2)
         data_user["Adresse"]= traitement_adresse(data_user["Adresse"][0])
         if data_user["Adresse"][0] in data_loyer["Adresse"].values:
-            # print(f'ce qu on done {data_user["date de construction"][0]}' )
-            # # print(f'bdd: {data_loyer["Type de location"]}') 
-            # print(f'ce qu on a: {data_loyer["Époque de construction"]}')
-            # # Filtrer les données de 'data_loyer' en fonction de plusieurs critères présents dans 'data_user'
+
             if data_user["date de construction"][0]!="None":
                 loyer_associe = data_loyer.loc[
                     (data_loyer["Adresse"] == data_user.loc[0, "Adresse"]) 
@@ -185,25 +214,71 @@ def fenetre_graph():
     
     frame2 = tk.LabelFrame(fenetre, text="Paramètres", width=20, height=20)
     frame2.pack(ipadx=2010, ipady=510, side="right", fill="both")
-       
-    
-    
+
     map_widget = TkinterMapView(frame1, width=2000, height=1000)
     map_widget.pack(fill="both")
-    # Champ pour entrer une adresse manuellement
     map_widget.set_position(48.8566, 2.3522)
     map_widget.set_zoom(12)
 
-    adresse_var = tk.StringVar(value="")
-    tk.Label(frame1, text="Entrer une adresse :", font=(typo, taille_ecriture)).pack(pady=5, side="top")
-    adresse_entry = tk.Entry(frame1, textvariable=adresse_var, font=(typo, taille_ecriture), width=50)
-    adresse_entry.pack(pady=5, side="top")
+    global mode_var
+    global rue_var
 
-    tk.Button(frame1, text="Valider l'adresse", command=validate_address, font=(typo, taille_ecriture)).pack(pady=5, side="top")
-    bouton_add_point = tk.Button(frame1, text="Ajouter un point", command=lambda: activate_map_click_mode(map_widget, adresse_var), font=(typo, taille_ecriture))
-    bouton_add_point.pack(pady=10, side="bottom")
+
+    mode_var = tk.StringVar(value="manuel")  
+
+    # Boutons radio pour le choix de la méthode
+    tk.Label(frame1, text="Choisissez une méthode :", font=(typo, taille_ecriture)).pack(pady=10, side="top")
+    tk.Radiobutton(
+        frame1, 
+        text="Entrer l'adresse manuellement", 
+        variable=mode_var, 
+        value="manuel", 
+        font=(typo, taille_ecriture),
+        command=lambda: toggle_mode("manuel")
+    ).pack(anchor="w", padx=10)
+
+    tk.Radiobutton(
+        frame1, 
+        text="Sélectionner un point sur la carte", 
+        variable=mode_var, 
+        value="carte", 
+        font=(typo, taille_ecriture),
+        command=lambda: toggle_mode("carte")
+    ).pack(anchor="w", padx=10)
+
+    # Frame pour l'entrée manuelle
+    frame_manual = tk.Frame(frame1)
+    frame_manual.pack(pady=10, fill="x")
+
+    rue_var = tk.StringVar(value="")
+    departement_var = tk.StringVar(value="")
+    adresse_var = tk.StringVar(value="")
+
+    tk.Label(frame_manual, text="Nom de la rue :", font=(typo, taille_ecriture)).pack(pady=5, side="top")
+    rue_entry = tk.Entry(frame_manual, textvariable=rue_var, font=(typo, taille_ecriture), width=50)
+    rue_entry.pack(pady=5, side="top")
+    
+
+    tk.Button(frame_manual, text="Valider l'adresse", command=validate_address, font=(typo, taille_ecriture)).pack(pady=5, side="top")
+
+    # Frame pour la sélection sur la carte
+    frame_map_selection = tk.Frame(frame1)
+    frame_map_selection.pack_forget()  # Masqué par défaut
+
+    tk.Label(frame_map_selection, text="Cliquez sur un point de la carte pour choisir une adresse :", font=(typo, taille_ecriture)).pack(pady=5, side="top")
+    tk.Button(frame_map_selection, text="Activer le mode carte", command=lambda: activate_map_click_mode(map_widget, adresse_var), font=(typo, taille_ecriture)).pack(pady=10)
+
+    # Fonction pour basculer entre les modes
+    def toggle_mode(mode):
+        if mode == "manuel":
+            frame_manual.pack(pady=10, fill="x")
+            frame_map_selection.pack_forget()
+        elif mode == "carte":
+            frame_manual.pack_forget()
+            frame_map_selection.pack(pady=10, fill="x")
 
     return fenetre, frame1, frame2, adresse_var
+
  
 def affichage_estimation(estimation, frame2):
     label = tk.Label(frame2, text=f"Nous estimons que votre sélection est : {estimation}", 
