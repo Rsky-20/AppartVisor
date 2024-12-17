@@ -24,8 +24,12 @@ def traitement_pieces(pieces):
 def traitement_adresse(adresse):
     
     if mode_var.get() == "manuel":
-        adr = adresse.split(" ")
-        adr_fin = adr[1] + " " + adr[2].lower() + " " + adr[3] + " " + "751"+adr[4][0:2] + " "+ adr[-1]
+        adr = adresse.split(",")
+        adre = adr[0]
+        a = adre.split(" ")
+        adre = " ".join(a[1:])
+        adre = " ".join([mot.lower() if mot in ["Le", "La", "De","Du"] else mot for mot in adre.split()])
+        adr_fin = adre + ", 751"+adr[1][1:3] + adr[-1]
         return adr_fin
     
     else:
@@ -152,6 +156,7 @@ def get_user_inputs(frame2, adresse_var):
                 
             
         else:
+            print(traitement_pieces(data_user["Nombre de pièces"][0]))
             print("L'adresse n'est pas disponible.")
 
     label_age_var = tk.StringVar()
