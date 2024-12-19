@@ -4,7 +4,7 @@ from tkintermapview import TkinterMapView
 from geopy.geocoders import Nominatim
 import pandas as pd
 import numpy as np
-data_loyer = pd.read_csv("loyers_paris_adresses.csv")
+data_loyer = pd.read_csv("AppartVisor\data\loyers_paris_adresses.csv")
 
 typo = "Arial"
 taille_ecriture = 12
