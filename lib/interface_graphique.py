@@ -15,11 +15,12 @@ class AppartVisorGUI():
 
         # Global variable to hold the DataFrame
         self.data_user = pd.DataFrame()
+        self.address_fin_fin = None
+        self.mode_var = None
+        self.rue_var = None
         
         self.fenetre, self.frame1, self.frame2, self.adresse_var = self.fenetre_graph()
         self.age, self.surface, self.pieces, self.prix_total, self.meuble = self.get_user_inputs(self.frame2, self.adresse_var)
-
-
 
         self.fenetre.mainloop()
 
@@ -33,8 +34,8 @@ class AppartVisorGUI():
             return str(pieces)+" pièces"
 
     def traitement_adresse(self, adresse):
-        
-        if mode_var.get() == "manuel":
+    
+        if self.mode_var.get() == "manuel":
             adr = adresse.split(",")
             adre = adr[0]
             a = adre.split(" ")
@@ -48,36 +49,36 @@ class AppartVisorGUI():
             add_num = ""  # Initialiser add_num pour éviter les erreurs
             list_abreviation = ["rue", "impasse", "square","place"]
             liste = adresse.split(",")
-            
+            #print(liste)
             for i in liste:
-                trimmed = i.strip().lower()  # Nettoyer et mettre en minuscule pour comparaison
-        
-                # Vérifie si l'élément contient un mot-clé d'adresse
-                if any(abrev in trimmed for abrev in list_abreviation):
-                    add += i.strip() + ", "  # Garde l'élément d'origine avec espaces enlevés
-                # Vérifie si l'élément est un code postal parisien
-                elif trimmed.isdigit() and trimmed.startswith("75"):
-                    add_num = '75'+'1'+trimmed[-2:] # Garde le code postal exact
+                trimmed = i.strip().lower()
+                #print(f"trimmed est: {trimmed}")
+                if any(abrev in trimmed for abrev in list_abreviation) and i.strip():
+                    add = i.strip()
+                    #print(f"Rue ajoutée : {add}")
+                elif trimmed.isdigit() and trimmed.startswith("75") and i.strip():
+                    add_num = '75' + '1' + trimmed[-2:]
+                    #print(f"Code postal ajouté : {add_num}")
             
-            # Gérer le cas où le code postal n'a pas été trouvé
-            if not add_num:
-                add_num = "Code postal non trouvé"
-            
-            return add + add_num + " Paris"
+            adresse_final = add + ", " + add_num + " Paris"
+            #print(f"L'adresse finale est : {adresse_final}")
+            return adresse_final
     
 
     def validate_address(self):
-        # Vérifie si le mode sélectionné est "manuel"
-        if mode_var.get() == "manuel":
-            address = rue_var.get()
-            address = self.traitement_adresse(address)
-            if address != "":  # Vérifie que l'adresse n'est pas vide
-                print(f"L'adresse validée est : {address}")
-                messagebox.showinfo("Adresse entrée", f"Adresse ajoutée :\n{address}")
-            else:
-                messagebox.showwarning("Erreur", "Veuillez entrer une adresse valide.")
+        if self.mode_var.get() == "manuel":
+            address = self.rue_var.get()
+        else:  # Mode carte
+            address = self.adresse_var.get()
+
+        # Vérifie que l'adresse n'est pas vide
+        if address and address.strip() != "":
+            self.address_fin_fin = self.traitement_adresse(address)
+            #print(f"L'adresse fin_fin validée est : {address_fin_fin}")
+            messagebox.showinfo("Adresse entrée", f"Adresse ajoutée :\n{self.address_fin_fin}")
+            
         else:
-            messagebox.showwarning("Mode invalide", "Vous devez être en mode manuel pour valider l'adresse.")
+            messagebox.showwarning("Erreur", "Veuillez entrer ou sélectionner une adresse valide.")
 
 
     def get_address_from_coordinates(self, lat, lon):
@@ -111,9 +112,8 @@ class AppartVisorGUI():
 
         def validate_all():
             # Update global DataFrame
-            global data_user
             if adresse_var.get() == " ":
-                data_user = pd.DataFrame({
+                self.data_user = pd.DataFrame({
                     "Âge": [age.get()],
                     "Superficie (m²)": [surface.get()],
                     "Nombre de pièces": [pieces.get()],
@@ -123,46 +123,44 @@ class AppartVisorGUI():
                     "Adresse": [adresse_var.get()]
                 })
             else :
-                data_user = pd.DataFrame({
+                self.data_user = pd.DataFrame({
                     "Âge": [age.get()],
                     "Superficie (m²)": [surface.get()],
                     "Nombre de pièces": [pieces.get()],
                     "Prix total (€)": [prix_total.get()],
                     "Type": [meuble.get()],
                     "date de construction":[date_cons.get()],
-                    "Adresse": [rue_var.get()]
+                    "Adresse": [self.rue_var.get()]
                 })
                 
             # Call the estimation display function
             estimation = "un bon appartement"
             self.affichage_estimation(estimation, frame2)
-            data_user["Adresse"]= self.traitement_adresse(data_user["Adresse"][0])
-            if data_user["Adresse"][0] in self.data_loyer["Adresse"].values:
+            self.data_user["Adresse"]= self.traitement_adresse(self.data_user["Adresse"][0])
+            if self.data_user["Adresse"][0] in self.data_loyer["Adresse"].values:
 
-                if data_user["date de construction"][0]!="None":
+                if self.data_user["date de construction"][0]!="None":
                     loyer_associe = self.data_loyer.loc[
-                        (self.data_loyer["Adresse"] == data_user.loc[0, "Adresse"]) 
-                        & (self.data_loyer["Nombre de pièces"] == self.traitement_pieces(data_user["Nombre de pièces"][0]))
-                        & (self.data_loyer["Type de location"] == data_user["Type"][0].lower())
-                        & (self.data_loyer["Époque de construction"] == data_user["date de construction"][0])
+                        (self.data_loyer["Adresse"] == self.data_user.loc[0, "Adresse"]) 
+                        & (self.data_loyer["Nombre de pièces"] == self.traitement_pieces(self.data_user["Nombre de pièces"][0]))
+                        & (self.data_loyer["Type de location"] == self.data_user["Type"][0].lower())
+                        & (self.data_loyer["Époque de construction"] == self.data_user["date de construction"][0])
                         ].values
                     print(f"L'adresse est disponible. Le loyer associé est : {loyer_associe[0][-2]} €/m²") #a changer par: loyer_associe[-2]
                     
                 else: 
                     loyer_associe = self.data_loyer.loc[
-                        (self.data_loyer["Adresse"] == data_user.loc[0, "Adresse"]) 
-                        & (self.data_loyer["Nombre de pièces"] == self.traitement_pieces(data_user["Nombre de pièces"][0]))
-                        & (self.data_loyer["Type de location"] == data_user["Type"][0].lower())
+                        (self.data_loyer["Adresse"] == self.data_user.loc[0, "Adresse"]) 
+                        & (self.data_loyer["Nombre de pièces"] == self.traitement_pieces(self.data_user["Nombre de pièces"][0]))
+                        & (self.data_loyer["Type de location"] == self.data_user["Type"][0].lower())
                         ].values
                     columns = ['Address', 'Nombre de pièces', 'Époque de construction', 'Type de location', 'min', 'moyen', 'max']
                     df_moyenne_prix = pd.DataFrame(loyer_associe, columns=columns)                
-
                     
                     print(f"L'adresse est disponible. Le loyer associé est : {np.mean(df_moyenne_prix['moyen'])} €/m²")
                     
-                
             else:
-                print(self.traitement_pieces(data_user["Nombre de pièces"][0]))
+                print(self.traitement_pieces(self.data_user["Nombre de pièces"][0]))
                 print("L'adresse n'est pas disponible.")
 
         label_age_var = tk.StringVar()
@@ -255,18 +253,14 @@ class AppartVisorGUI():
         # Redimensionner dynamiquement en fonction des modifications de la fenêtre
         self.fenetre.bind("<Configure>", resize_frames)
 
-        global mode_var
-        global rue_var
-
-
-        mode_var = tk.StringVar(value="manuel")  
+        self.mode_var = tk.StringVar(value="manuel")  
 
         # Boutons radio pour le choix de la méthode
         tk.Label(frame1, text="Choisissez une méthode :", font=(self.typo, self.taille_ecriture)).pack(pady=10, side="top")
         tk.Radiobutton(
             frame1, 
             text="Entrer l'adresse manuellement", 
-            variable=mode_var, 
+            variable=self.mode_var, 
             value="manuel", 
             font=(self.typo, self.taille_ecriture),
             command=lambda: toggle_mode("manuel")
@@ -275,7 +269,7 @@ class AppartVisorGUI():
         tk.Radiobutton(
             frame1, 
             text="Sélectionner un point sur la carte", 
-            variable=mode_var, 
+            variable=self.mode_var, 
             value="carte", 
             font=(self.typo, self.taille_ecriture),
             command=lambda: toggle_mode("carte")
@@ -285,12 +279,12 @@ class AppartVisorGUI():
         frame_manual = tk.Frame(frame1)
         frame_manual.pack(pady=10, fill="x")
 
-        rue_var = tk.StringVar(value="")
+        self.rue_var = tk.StringVar(value="")
         departement_var = tk.StringVar(value="")
         adresse_var = tk.StringVar(value="")
 
         tk.Label(frame_manual, text="Nom de la rue :", font=(self.typo, self.taille_ecriture)).pack(pady=5, side="top")
-        rue_entry = tk.Entry(frame_manual, textvariable=rue_var, font=(self.typo, self.taille_ecriture), width=50)
+        rue_entry = tk.Entry(frame_manual, textvariable=self.rue_var, font=(self.typo, self.taille_ecriture), width=50)
         rue_entry.pack(pady=5, side="top")
         
 
@@ -304,7 +298,7 @@ class AppartVisorGUI():
         tk.Button(frame_map_selection, text="Activer le mode carte", command=lambda: self.activate_map_click_mode(map_widget, adresse_var), font=(self.typo, self.taille_ecriture)).pack(pady=10)
 
         # Fonction pour basculer entre les modes
-        def toggle_mode(self, mode):
+        def toggle_mode(mode):
             if mode == "manuel":
                 frame_manual.pack(pady=10, fill="x")
                 frame_map_selection.pack_forget()
