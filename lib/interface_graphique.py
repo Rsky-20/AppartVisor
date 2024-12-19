@@ -195,8 +195,14 @@ def get_user_inputs(frame2, adresse_var):
 
     return age, surface, pieces, prix_total, meuble
 
+def get_window_dimensions(fenetre):
+    return fenetre.winfo_width(), fenetre.winfo_height()  # Largeur et Hauteur actuelle
+
 def fenetre_graph():
     fenetre = tk.Tk()
+    fenetre.update_idletasks()
+    fenetre_largeur, fenetre_hauteur = get_window_dimensions(fenetre)
+
     fenetre['bg'] = 'white'
     fenetre.title("Prototipage rapide")
     fenetre.state('zoomed')
@@ -212,18 +218,36 @@ def fenetre_graph():
 
     bouton = tk.Button(fenetre, text="Quitter", command=fenetre.destroy, fg="red", font=(typo, taille_ecriture, "italic"))
     bouton.pack()
-    bouton.place(x=2700, y=10)
 
-    frame1 = tk.LabelFrame(fenetre, text="Visualisation map", width=2000, height=500)
+    frame1 = tk.LabelFrame(fenetre, text="Visualisation map", width=int(fenetre_largeur*0.0), height=int(fenetre_hauteur*0.4))
     frame1.pack(ipadx=20, ipady=20, side="left", fill="both", expand=False)
     
     frame2 = tk.LabelFrame(fenetre, text="Paramètres", width=20, height=20)
     frame2.pack(ipadx=2010, ipady=510, side="right", fill="both")
 
-    map_widget = TkinterMapView(frame1, width=2000, height=1000)
-    map_widget.pack(fill="both")
+    map_widget = TkinterMapView(frame1)
+    map_widget.pack(fill="both", expand=True)
     map_widget.set_position(48.8566, 2.3522)
     map_widget.set_zoom(12)
+    
+    # Fonction pour redimensionner les frames
+    def resize_frames(event=None):
+        fenetre_largeur, fenetre_hauteur = get_window_dimensions(fenetre)
+        
+        # Dimensions pour frame1
+        largeur_frame1 = int(fenetre_largeur * 0.5)  # 50% de la largeur
+        hauteur_frame1 = int(fenetre_hauteur * 0.4)  # 40% de la hauteur
+        
+        # Configurer la taille de frame1
+        frame1.config(width=largeur_frame1, height=hauteur_frame1)
+        
+        # Frame2 occupe le reste de l'espace
+        largeur_frame2 = fenetre_largeur - largeur_frame1
+        hauteur_frame2 = fenetre_hauteur  # Reste toute la hauteur
+        frame2.config(width=largeur_frame2, height=hauteur_frame2)
+
+    # Redimensionner dynamiquement en fonction des modifications de la fenêtre
+    fenetre.bind("<Configure>", resize_frames)
 
     global mode_var
     global rue_var
