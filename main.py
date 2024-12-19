@@ -2,6 +2,11 @@ import inquirer
 import argparse
 import lib.utils as utils
 import lib.test_utils as t_utils
+import lib.interface_graphique as AppartVisor
+
+import os
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
 
 def developpement_menu():
     pass
@@ -10,11 +15,14 @@ def menu():
     questions = [
     inquirer.List('code',
                     message="Qu'est ce que vous voulez charger ?",
-                    choices=['Création BDD POI', 'Création BDD prix Paris', 'Nettoyage BDD', 'Jointure BDD', 'Entrainement Model', 'Application - AppartVisor'],
+                    choices=['AppartVisor GUI', 'Création BDD POI', 'Création BDD prix Paris', 'Nettoyage BDD', 'Jointure BDD', 'Entrainement Model', 'Application - AppartVisor'],
                 ),
     ]
     answers = inquirer.prompt(questions)
     print(answers["code"])
+    if answers["code"] == 'AppartVisor GUI':
+        AppartVisor.AppartVisorGUI()
+    
 
 if __name__=='__main__':
     

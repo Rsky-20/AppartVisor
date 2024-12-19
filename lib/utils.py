@@ -238,5 +238,5 @@ def get_data_from_referenceloyer(ban_path = "data/simplified-ban.csv", output_fi
 if __name__=='__main__':
     #simplify_ban()
     #get_data_from_overpass()
-    get_unique_poi_types(filepath='D:\\IPSA\Aero5\\2.15_au513_Conception_des_systemes_prototypage_rapide\\AppartVisor\\data\\poi_paris.csv')
+    print(get_unique_poi_types(filepath='AppartVisor\\data\\poi_paris.csv'))
     #time.sleep(4)
