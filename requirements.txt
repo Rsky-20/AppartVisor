@@ -8,13 +8,19 @@ certifi
 cffi
 charset-normalizer
 chromedriver-autoinstaller
+click
 colorama
 contourpy
+customtkinter
 cycler
+darkdetect
+decorator
 editor
 flatbuffers
 fonttools
+future
 gast
+geocoder
 google-pasta
 grpcio
 h11
@@ -56,6 +62,8 @@ PySocks
 python-dateutil
 pytweening
 pytz
+pywin32
+ratelim
 readchar
 requests
 rich
@@ -74,6 +82,7 @@ tensorflow
 tensorflow_intel
 termcolor
 threadpoolctl
+tkintermapview
 tqdm
 trio
 trio-websocket
