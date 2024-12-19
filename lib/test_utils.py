@@ -9,224 +9,191 @@ import pandas as pd
 from scipy.spatial import KDTree
 import numpy as np
 import matplotlib.pyplot as plt
-
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-import tensorflow as tf
-from tensorflow.keras import layers, models
 import os
 from tqdm import tqdm
 
+import torch
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.neighbors import KDTree
+from tensorflow.keras.layers import TextVectorization
 
-from collections import Counter
 
-def calculate_poi_counts(row, tree, poi_df, tolerance_km=0.5):
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+
+# Fonction pour préparer les données utilisateur
+def predict_user_data(model, data_user, categorical_encoder, scaler, text_vectorizer, device):
     """
-    Calcule le nombre de POIs proches pour chaque type.
+    Prédit le loyer médian (€/m²) pour une donnée utilisateur.
+
+    Args:
+        model (torch.nn.Module): Modèle PyTorch entraîné.
+        data_user (pd.DataFrame): Donnée utilisateur (1 seule ligne) sous forme de DataFrame.
+        categorical_encoder (OneHotEncoder): Encodeur catégorique entraîné.
+        scaler (StandardScaler): Scaler entraîné pour les données numériques.
+        text_vectorizer (TextVectorization): Vectoriseur textuel entraîné.
+        device (torch.device): Appareil ('cpu' ou 'cuda') pour exécuter le modèle.
+
+    Returns:
+        float: Prédiction du loyer médian (€/m²).
     """
-    tolerance_deg = tolerance_km / 111  # Convert kilometers to degrees (approximation for latitude/longitude)
-    lat_lon = (row['lat'], row['long'])
-    idxs = tree.query_ball_point(lat_lon, tolerance_deg)
+    # Préparer les données utilisateur
+    # Vectorisation des textes
+    user_text = data_user[['cle_interop', 'commune_nom', 'voie_nom', 'Adresse']].apply(
+        lambda row: ' '.join(row.values.astype(str)), axis=1
+    )
+    user_text_vectorized = text_vectorizer(tf.convert_to_tensor(user_text)).numpy()
+
+    # Encodage des données catégoriques
+    user_categorical_encoded = categorical_encoder.transform(data_user[['Nombre de pièces', 'Époque de construction', 'Type de location']])
+
+    # Mise à l'échelle des données numériques
+    user_numerical_scaled = scaler.transform(data_user[['lat', 'long', 'numero', 'num_dentist', 'num_driving_school',
+                                                        'num_park', 'num_fitness_centre', 'num_pub', 'num_community_centre',
+                                                        'num_yoga_studio', 'num_dojo', 'num_sports_centre', 'num_bank',
+                                                        'num_restaurant', 'num_library', 'num_cafe', 'num_clinic',
+                                                        'num_theatre', 'num_cinema', 'num_marketplace', 'num_university',
+                                                        'num_childcare', 'Loyer minimum (€/m²)', 'Loyer maximum (€/m²)']])
+
+    # Combiner toutes les données
+    user_combined = np.hstack([
+        user_numerical_scaled,
+        user_text_vectorized,
+        user_categorical_encoded
+    ]).astype(np.float32)
+
+    # Convertir en tensor PyTorch
+    user_tensor = torch.tensor(user_combined, dtype=torch.float32).to(device)
+
+    # Effectuer la prédiction
+    model.eval()  # Passer le modèle en mode évaluation
+    with torch.no_grad():
+        prediction = model(user_tensor).cpu().numpy()
+
+    return prediction[0][0]  # Retourner la prédiction
+
+def calculate_poi_counts_for_user(lat, long, poi_df, poi_tree, tolerance_km=0.5):
+    """
+    Calcule le nombre de POI proches pour chaque type à partir de la latitude et longitude fournies.
+
+    Args:
+        lat (float): Latitude de la localisation.
+        long (float): Longitude de la localisation.
+        poi_df (pd.DataFrame): DataFrame contenant les informations sur les POI.
+        poi_tree (KDTree): KDTree construit à partir des coordonnées des POI.
+        tolerance_km (float): Rayon de recherche des POI en kilomètres.
+
+    Returns:
+        dict: Dictionnaire avec le nombre de POI par type.
+    """
+    # Conversion du rayon de recherche de km à degrés (1° ~ 111 km)
+    tolerance_deg = tolerance_km / 111
+
+    # Rechercher les POI dans le rayon spécifié
+    lat_lon = (lat, long)
+    idxs = poi_tree.query_ball_point(lat_lon, tolerance_deg)
+
+    # Filtrer les POI trouvés
     nearby_pois = poi_df.iloc[idxs]['type'].values
 
-    # Compter le nombre de POIs par type
-    poi_counts = Counter(nearby_pois)
+    # Compter les POI par type
+    poi_counts = {poi_type: 0 for poi_type in poi_df['type'].unique()}
+    for poi in nearby_pois:
+        poi_counts[poi] += 1
+
     return poi_counts
 
-def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
-                  poi_paris_dataset_filepath='poi_paris 1.csv',
-                  loyers_paris_adresses_filepath='loyers_paris_adresses.csv',
-                  output_prefix='dataset/merged_part',
-                  max_file_size_gb=1):
+# Fonction pour enrichir `data_user` avec les POI
+def enrich_user_data_with_poi(data_user, poi_df):
+    """
+    Enrichit les données utilisateur avec les POI proches en ajoutant des colonnes pour chaque type de POI.
 
-    # Vérification et création du dossier
-    os.makedirs('dataset', exist_ok=True)
-    print('[Start] - Merge Dataset')
+    Args:
+        data_user (pd.DataFrame): Données utilisateur avec `lat` et `long`.
+        poi_df (pd.DataFrame): DataFrame contenant les POI avec leurs types et coordonnées.
 
-    # Chargement des fichiers CSV
-    adresses_df = pd.read_csv(adress_dataset_filepath, delimiter=';')
-    poi_df = pd.read_csv(poi_paris_dataset_filepath)
-    loyers_df = pd.read_csv(loyers_paris_adresses_filepath)
-
-    print('[RUN PROCESS] - Data cleanning')
-    # Nettoyage des colonnes et filtrage
-    adresses_df.columns = adresses_df.columns.str.strip().str.replace(r'[^A-Za-z0-9_]', '', regex=True)
-    adresses_df_filtered = adresses_df[['cle_interop', 'commune_nom', 'voie_nom', 'numero', 'long', 'lat']].dropna()
-
-    # Liste des types de POI intéressants
-    interesting_pois = [
-        'restaurant', 'cafe', 'bar', 'fast_food', 'pharmacy', 'school', 'library', 'bank', 'clinic',
-        'hospital', 'theatre', 'cinema', 'marketplace', 'university', 'childcare', 'art_school',
-        'music_school', 'dentist', 'driving_school', 'park', 'fitness_centre', 'pub', 'community_centre',
-        'yoga_studio', 'dojo', 'sports_centre'
-    ]
-
-    # Filtrer les POI en fonction des types intéressants
-    poi_df_filtered = poi_df[poi_df['type'].isin(interesting_pois)].dropna(subset=['latitude', 'longitude', 'type'])
-
-    # Nettoyer et filtrer les loyers
-    loyers_df_filtered = loyers_df[['Adresse', 'Nombre de pièces', 'Époque de construction',
-                                    'Type de location', 'Loyer minimum (€/m²)', 'Loyer médian (€/m²)',
-                                    'Loyer maximum (€/m²)']].dropna()
-
-    loyers_df_filtered['voie_nom'] = loyers_df_filtered['Adresse'].apply(lambda x: x.split(',')[0])
-    
-    print('[RUN PROCESS] - Merge Data into DataFrame')
-    # Fusion des adresses et des loyers
-    merged_adresses_loyers = pd.merge(adresses_df_filtered, loyers_df_filtered, on='voie_nom', how='inner')
-
-    # Dictionnaire des poids des POI
-    poi_weights = {
-        'restaurant': 5, 'cafe': 3, 'bar': 2, 'fast_food': 1, 'pharmacy': 2,
-        'school': 2, 'library': 3, 'bank': 1, 'clinic': 3, 'hospital': 4,
-        'cinema': 4, 'theatre': 3, 'marketplace': 2, 'university': 5,
-        'childcare': 2, 'art_school': 4, 'music_school': 4, 'dentist': 3,
-        'driving_school': 2, 'park': 3, 'fitness_centre': 4, 'pub': 2,
-        'community_centre': 3, 'yoga_studio': 3, 'dojo': 3, 'sports_centre': 4
-    }
-
-    print('[RUN PROCESS] - POI cleanning')
-    # KDTree pour trouver les POI proches
-    poi_coords = np.array(list(zip(poi_df_filtered['latitude'], poi_df_filtered['longitude'])))
+    Returns:
+        pd.DataFrame: Données utilisateur enrichies avec les colonnes de POI.
+    """
+    # Construire le KDTree pour les POI
+    poi_coords = np.array(list(zip(poi_df['latitude'], poi_df['longitude'])))
     poi_tree = KDTree(poi_coords)
-    
-    # Application de la fonction pour calculer le nombre de POI pour chaque appartement
-    merged_adresses_loyers['Nearby_POI_Counts'] = merged_adresses_loyers.apply(
-        calculate_poi_counts, tree=poi_tree, poi_df=poi_df_filtered, axis=1
-    )
-    # Création de colonne pour chaque type de POI
-    poi_types = interesting_pois  # List de types de POI
-    
-    print('[RUN PROCESS] - Count POI by type')
-    for poi_type in poi_types:
-        merged_adresses_loyers[f'num_{poi_type}'] = merged_adresses_loyers['Nearby_POI_Counts'].apply(
-            lambda x: x.get(poi_type, 0)  # Obtenir le nombre pour le POI, 0 par défault s'il n'y en a pas.
-        )
-    
-    # Droping the 'Nearby_POI_Counts' column after processing
-    merged_adresses_loyers.drop(columns=['Nearby_POI_Counts'], inplace=True)
 
+    # Récupérer les POI pour chaque ligne utilisateur
+    poi_types = poi_df['type'].unique()
+    poi_columns = [f'num_{poi_type}' for poi_type in poi_types]
 
+    # Initialiser les colonnes POI avec 0
+    for col in poi_columns:
+        data_user[col] = 0
 
+    # Enrichir chaque ligne utilisateur avec les POI proches
+    for idx, row in data_user.iterrows():
+        poi_counts = calculate_poi_counts_for_user(row['lat'], row['long'], poi_df, poi_tree)
+        for poi_type, count in poi_counts.items():
+            column_name = f'num_{poi_type}'
+            if column_name in data_user.columns:
+                data_user.at[idx, column_name] = count
 
-    def calculate_poi_weights(row, tree, poi_df, weights_dict, tolerance_km=0.5):
-        """
-        Calcule la somme des poids des POI proches pour une adresse.
-        """
-        tolerance_deg = tolerance_km / 111  # Conversion km -> degrés
-        lat_lon = (row['lat'], row['long'])
-        idxs = tree.query_ball_point(lat_lon, tolerance_deg)
-        nearby_pois = poi_df.iloc[idxs]['type'].values
+    return data_user
 
-        # Calcul de la somme des poids des POI
-        total_weight = sum(weights_dict.get(poi, 0) for poi in nearby_pois)
-        return total_weight
+if __name__ == '__main__':
+    # Charger ou définir les objets nécessaires
 
-    # Ajouter une colonne pour la somme des poids des POI
-    merged_adresses_loyers['Nearby_POI_Weight'] = merged_adresses_loyers.apply(
-        calculate_poi_weights, tree=poi_tree, poi_df=poi_df_filtered, weights_dict=poi_weights, axis=1
-    )
+    # Exemple de données utilisateur
+    data_user = pd.DataFrame({
+        "cle_interop": ["example_key"],
+        "commune_nom": ["Paris"],
+        "voie_nom": ["Rue de Rivoli"],
+        "Adresse": ["10 Rue de Rivoli, Paris"],
+        "Nombre de pièces": ["2 pièces"],
+        "Époque de construction": ["1990"],
+        "Type de location": ["meublée"],
+        "lat": [48.8566],
+        "long": [2.3522],
+        "numero": [10],
+        "Loyer minimum (€/m²)": [15],
+        "Loyer maximum (€/m²)": [30]
+    })
 
-    print('[RUN PROCESS] - Separate DataFrame as data chunk')
-    # Écriture des résultats dans des fichiers CSV segmentés
-    max_file_size_bytes = max_file_size_gb * 1024 * 1024 * 1024
-    current_file_index = 1
-    current_file_size = 0
-    output_file = f"{output_prefix}_{current_file_index}.csv"
-    header_written = False
+    # Base de données des POI
+    poi_df = pd.DataFrame({
+        'name': ['Notre-Dame', 'Louvre Museum'],
+        'latitude': [48.851834, 48.860611],
+        'longitude': [2.3500556, 2.337644],
+        'type': ['ferry_terminal', 'museum']
+    })
 
-    for chunk_start in range(0, len(merged_adresses_loyers), 10000):  # Traite 10 000 lignes à la fois
-        chunk = merged_adresses_loyers.iloc[chunk_start:chunk_start + 10000]
-        chunk_size_bytes = chunk.memory_usage(deep=True).sum()
+    # Initialiser le modèle (exemple simplifié)
+    class MockModel(torch.nn.Module):
+        def forward(self, x):
+            return torch.tensor([[25.0]])  # Exemple de valeur prédite (25 €/m²)
 
-        # Si le fichier dépasse la taille maximale, crée un nouveau fichier
-        if current_file_size + chunk_size_bytes > max_file_size_bytes:
-            current_file_index += 1
-            output_file = f"{output_prefix}_{current_file_index}.csv"
-            current_file_size = 0
-            header_written = False
+    model = MockModel()
 
-        # Écrire le chunk dans le fichier actuel
-        chunk.to_csv(output_file, mode='a', header=not header_written, index=False, encoding='utf-8')
-        current_file_size += chunk_size_bytes
-        header_written = True
+    # Simuler les encodeurs et scaler (exemples simplifiés)
+    categorical_encoder = OneHotEncoder(sparse=False, handle_unknown='ignore')
+    categorical_encoder.fit(data_user[['Nombre de pièces', 'Époque de construction', 'Type de location']])
 
-        print(f"[END PROCESS] - Save chunk file : '{output_file}'.")
+    scaler = StandardScaler()
+    scaler.fit(data_user[['lat', 'long', 'numero', 'Loyer minimum (€/m²)', 'Loyer maximum (€/m²)']])
 
+    text_vectorizer = TextVectorization(output_mode="tf-idf", max_tokens=10000)
+    text_vectorizer.adapt(data_user[['cle_interop', 'commune_nom', 'voie_nom', 'Adresse']].apply(
+        lambda row: ' '.join(row.values.astype(str)), axis=1
+    ))
 
-def predict_Paris_renting_good_price(merged_adress_loyers_filepath='merged_adresses_loyers.csv'):
-    # Charger les données
-    data = pd.read_csv(merged_adress_loyers_filepath)
+    # Enrichir les données utilisateur avec les POI
+    data_user = enrich_user_data_with_poi(data_user, poi_df)
 
-    # Sélectionner les colonnes pour la prédiction
-    # Update the features to include the new POI count columns
-    poi_count_features = [f'num_{poi}' for poi in interesting_pois]
-    X = data[['lat', 'long', 'Loyer minimum (€/m²)', 'Loyer maximum (€/m²)'] + poi_count_features]
-    y = data['Loyer médian (€/m²)']
+    # Prédire le loyer pour les données utilisateur enrichies
+    try:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        rent_prediction = predict_user_data(model, data_user, categorical_encoder, scaler, text_vectorizer, device)
+        print(f"Loyer prédit : {rent_prediction:.2f} €/m²")
 
-    # Colonne cible: prédiction du loyer médian
-    
-    # Diviser les données en ensembles d'entraînement et de test (80% entraînement, 20% test)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    except ValueError as e:
+        print(f"Erreur : {e}")
 
-    # Prétraitement : normalisation des données numériques et encodage des données catégorielles
-    numeric_features = ['lat', 'long', 'Loyer minimum (€/m²)', 'Loyer maximum (€/m²)']
-    categorical_features = ['commune_nom', 'Nearby_POIs']
-
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', StandardScaler(), numeric_features),
-            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
-        ])
-
-    # Appliquer le prétraitement aux données
-    X_train_preprocessed = preprocessor.fit_transform(X_train)
-    X_test_preprocessed = preprocessor.transform(X_test)
-
-    # Créer un modèle de réseau de neurones pour la prédiction du loyer médian
-    model = models.Sequential()
-
-    # Couches denses pour le modèle
-    model.add(layers.Dense(64, activation='relu', input_shape=(X_train_preprocessed.shape[1],)))
-    model.add(layers.Dense(32, activation='relu'))
-    model.add(layers.Dense(16, activation='relu'))
-
-    # Couche de sortie pour la régression (prédiction du loyer médian)
-    model.add(layers.Dense(1))  # Pas d'activation car c'est une régression
-
-    # Compiler le modèle avec l'optimiseur Adam et la perte MSE (mean squared error)
-    model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-
-    # Résumé du modèle
-    model.summary()
-
-    # Entraîner le modèle
-    history = model.fit(X_train_preprocessed, y_train, epochs=50, validation_split=0.2, batch_size=32)
-
-    # Évaluer le modèle sur les données de test
-    test_loss, test_mae = model.evaluate(X_test_preprocessed, y_test)
-    print(f'Erreur absolue moyenne sur les données de test: {test_mae}')
-
-
-    # Visualiser la courbe de perte
-    plt.plot(history.history['loss'], label='Train loss')
-    plt.plot(history.history['val_loss'], label='Validation loss')
-    plt.title('Courbe de perte')
-    plt.xlabel('Époques')
-    plt.ylabel('Perte')
-    plt.legend()
-    plt.show()
-
-    # Visualiser la courbe de MAE (Erreur absolue moyenne)
-    plt.plot(history.history['mae'], label='Train MAE')
-    plt.plot(history.history['val_mae'], label='Validation MAE')
-    plt.title('Erreur Absolue Moyenne (MAE)')
-    plt.xlabel('Époques')
-    plt.ylabel('MAE')
-    plt.legend()
-    plt.show()
-
-if __name__=='__main__':
-    pass

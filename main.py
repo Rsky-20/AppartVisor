@@ -15,12 +15,12 @@ def menu():
     questions = [
     inquirer.List('code',
                     message="Qu'est ce que vous voulez charger ?",
-                    choices=['AppartVisor GUI', 'Création BDD POI', 'Création BDD prix Paris', 'Nettoyage BDD', 'Jointure BDD', 'Entrainement Model', 'Application - AppartVisor'],
+                    choices=['Création BDD POI', 'Création BDD prix Paris', 'Nettoyage BDD', 'Jointure BDD', 'Entrainement Model', 'Application - AppartVisor'],
                 ),
     ]
     answers = inquirer.prompt(questions)
     print(answers["code"])
-    if answers["code"] == 'AppartVisor GUI':
+    if answers["code"] == 'Application - AppartVisor':
         AppartVisor.AppartVisorGUI()
     
 
@@ -43,6 +43,7 @@ if __name__=='__main__':
     
     if args.dev:
         print("Development mode active.")
+        AppartVisor.AppartVisorGUI()
         
     elif args.menu:
         print("Menu mode active.")
@@ -63,6 +64,9 @@ if __name__=='__main__':
 
         if args.test == 'merge_dataset':
             t_utils.merge_dataset('data\\adresses-ban.csv', 'data\\poi_paris.csv', 'data\\loyers_paris_adresses.csv.old', 'dataset\\merged_data.csv', 1)
+            
+        if args.test == 'print':
+            print("[TEST] - Ceci est un print test")
     
     #get_unique_poi_types
     else:

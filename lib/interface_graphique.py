@@ -87,6 +87,15 @@ class AppartVisorGUI():
         if location:
             return location.address
         return "Adresse non trouvée"
+    
+    
+    def get_lat_long(self, adresse):
+        geolocator = Nominatim(user_agent="app_loyer")
+        location = geolocator.geocode(adresse)
+        if location:
+            return location.latitude, location.longitude
+        else:
+            return None, None
 
 
     def activate_map_click_mode(self, map_widget, adresse_var):
@@ -97,6 +106,7 @@ class AppartVisorGUI():
             messagebox.showinfo("Adresse sélectionnée", f"Adresse ajoutée :\n{address}")
         map_widget.add_left_click_map_command(on_click)
         messagebox.showinfo("Mode ajout activé", "Cliquez sur la carte pour sélectionner une adresse.")
+        
 
     def get_user_inputs(self, frame2, adresse_var):
         age = tk.IntVar()
@@ -113,6 +123,7 @@ class AppartVisorGUI():
         def validate_all():
             # Update global DataFrame
             if adresse_var.get() == " ":
+                lat, long = self.get_lat_long(adresse_var.get())
                 self.data_user = pd.DataFrame({
                     "Âge": [age.get()],
                     "Superficie (m²)": [surface.get()],
@@ -120,7 +131,9 @@ class AppartVisorGUI():
                     "Prix total (€)": [prix_total.get()],
                     "Type": [meuble.get()],
                     "date de construction":[date_cons.get()],
-                    "Adresse": [adresse_var.get()]
+                    "Adresse": [adresse_var.get()],
+                    "Latitude": lat,
+                    "Longitude": long
                 })
             else :
                 self.data_user = pd.DataFrame({
@@ -130,7 +143,9 @@ class AppartVisorGUI():
                     "Prix total (€)": [prix_total.get()],
                     "Type": [meuble.get()],
                     "date de construction":[date_cons.get()],
-                    "Adresse": [self.rue_var.get()]
+                    "Adresse": [self.rue_var.get()],
+                    "Latitude": self.get_lat_long(adresse_var.get())[0],
+                    "Longitude": self.get_lat_long(adresse_var.get())[1],
                 })
                 
             # Call the estimation display function
@@ -310,9 +325,26 @@ class AppartVisorGUI():
 
     
     def affichage_estimation(self, estimation, frame2):
+        self.affichage_user_data()
         label = tk.Label(frame2, text=f"Nous estimons que votre sélection est : {estimation}", 
                         font=(self.typo, self.taille_ecriture), fg="green")
         label.pack(pady=10, side="bottom")
+        
+    def affichage_user_data(self):
+        """
+        Affiche les données utilisateur contenues dans self.data_user.
+        """
+        if hasattr(self, 'data_user') and not self.data_user.empty:
+            print("""
+    [User Data]
+    -----------------------------
+    """)
+            for col in self.data_user.columns:
+                print(f"{col}: {self.data_user[col].iloc[0]}")
+            print("-----------------------------")
+        else:
+            print("[Erreur] : Les données utilisateur (self.data_user) n'ont pas été définies ou sont vides.")
+
 
 if __name__=='__main__':
     app = AppartVisorGUI()

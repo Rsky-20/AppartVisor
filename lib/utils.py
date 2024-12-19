@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 import pyautogui
 import tqdm
+from sklearn.neighbors import KDTree
+
 
 try:
     import chromedriver_autoinstaller
@@ -233,6 +235,141 @@ def get_data_from_referenceloyer(ban_path = "data/simplified-ban.csv", output_fi
         except Exception as e:
             print(f"Erreur lors de la récupération des données pour l'adresse {adresse_complete}: {e}")
             continue
+
+
+def calculate_poi_counts(row, tree, poi_df, tolerance_km=0.5):
+    """
+    Calcule le nombre de POIs proches pour chaque type.
+    """
+    tolerance_deg = tolerance_km / 111  # Convert kilometers to degrees (approximation for latitude/longitude)
+    lat_lon = (row['lat'], row['long'])
+    idxs = tree.query_ball_point(lat_lon, tolerance_deg)
+    nearby_pois = poi_df.iloc[idxs]['type'].values
+
+    # Compter le nombre de POIs par type
+    poi_counts = Counter(nearby_pois)
+    return poi_counts
+
+def merge_dataset(adress_dataset_filepath='adresses-ban.csv',
+                  poi_paris_dataset_filepath='poi_paris 1.csv',
+                  loyers_paris_adresses_filepath='loyers_paris_adresses.csv',
+                  output_prefix='dataset/merged_part',
+                  max_file_size_gb=1):
+
+    # Vérification et création du dossier
+    os.makedirs('dataset', exist_ok=True)
+    print('[Start] - Merge Dataset')
+
+    # Chargement des fichiers CSV
+    adresses_df = pd.read_csv(adress_dataset_filepath, delimiter=';')
+    poi_df = pd.read_csv(poi_paris_dataset_filepath)
+    loyers_df = pd.read_csv(loyers_paris_adresses_filepath)
+
+    print('[RUN PROCESS] - Data cleanning')
+    # Nettoyage des colonnes et filtrage
+    adresses_df.columns = adresses_df.columns.str.strip().str.replace(r'[^A-Za-z0-9_]', '', regex=True)
+    adresses_df_filtered = adresses_df[['cle_interop', 'commune_nom', 'voie_nom', 'numero', 'long', 'lat']].dropna()
+
+    # Liste des types de POI intéressants
+    interesting_pois = [
+        'restaurant', 'cafe', 'bar', 'fast_food', 'pharmacy', 'school', 'library', 'bank', 'clinic',
+        'hospital', 'theatre', 'cinema', 'marketplace', 'university', 'childcare', 'art_school',
+        'music_school', 'dentist', 'driving_school', 'park', 'fitness_centre', 'pub', 'community_centre',
+        'yoga_studio', 'dojo', 'sports_centre'
+    ]
+
+    # Filtrer les POI en fonction des types intéressants
+    poi_df_filtered = poi_df[poi_df['type'].isin(interesting_pois)].dropna(subset=['latitude', 'longitude', 'type'])
+
+    # Nettoyer et filtrer les loyers
+    loyers_df_filtered = loyers_df[['Adresse', 'Nombre de pièces', 'Époque de construction',
+                                    'Type de location', 'Loyer minimum (€/m²)', 'Loyer médian (€/m²)',
+                                    'Loyer maximum (€/m²)']].dropna()
+
+    loyers_df_filtered['voie_nom'] = loyers_df_filtered['Adresse'].apply(lambda x: x.split(',')[0])
+    
+    print('[RUN PROCESS] - Merge Data into DataFrame')
+    # Fusion des adresses et des loyers
+    merged_adresses_loyers = pd.merge(adresses_df_filtered, loyers_df_filtered, on='voie_nom', how='inner')
+
+    # Dictionnaire des poids des POI
+    poi_weights = {
+        'restaurant': 5, 'cafe': 3, 'bar': 2, 'fast_food': 1, 'pharmacy': 2,
+        'school': 2, 'library': 3, 'bank': 1, 'clinic': 3, 'hospital': 4,
+        'cinema': 4, 'theatre': 3, 'marketplace': 2, 'university': 5,
+        'childcare': 2, 'art_school': 4, 'music_school': 4, 'dentist': 3,
+        'driving_school': 2, 'park': 3, 'fitness_centre': 4, 'pub': 2,
+        'community_centre': 3, 'yoga_studio': 3, 'dojo': 3, 'sports_centre': 4
+    }
+
+    print('[RUN PROCESS] - POI cleanning')
+    # KDTree pour trouver les POI proches
+    poi_coords = np.array(list(zip(poi_df_filtered['latitude'], poi_df_filtered['longitude'])))
+    poi_tree = KDTree(poi_coords)
+    
+    # Application de la fonction pour calculer le nombre de POI pour chaque appartement
+    merged_adresses_loyers['Nearby_POI_Counts'] = merged_adresses_loyers.apply(
+        calculate_poi_counts, tree=poi_tree, poi_df=poi_df_filtered, axis=1
+    )
+    # Création de colonne pour chaque type de POI
+    poi_types = interesting_pois  # List de types de POI
+    
+    print('[RUN PROCESS] - Count POI by type')
+    for poi_type in poi_types:
+        merged_adresses_loyers[f'num_{poi_type}'] = merged_adresses_loyers['Nearby_POI_Counts'].apply(
+            lambda x: x.get(poi_type, 0)  # Obtenir le nombre pour le POI, 0 par défault s'il n'y en a pas.
+        )
+    
+    # Droping the 'Nearby_POI_Counts' column after processing
+    merged_adresses_loyers.drop(columns=['Nearby_POI_Counts'], inplace=True)
+
+
+
+
+    def calculate_poi_weights(row, tree, poi_df, weights_dict, tolerance_km=0.5):
+        """
+        Calcule la somme des poids des POI proches pour une adresse.
+        """
+        tolerance_deg = tolerance_km / 111  # Conversion km -> degrés
+        lat_lon = (row['lat'], row['long'])
+        idxs = tree.query_ball_point(lat_lon, tolerance_deg)
+        nearby_pois = poi_df.iloc[idxs]['type'].values
+
+        # Calcul de la somme des poids des POI
+        total_weight = sum(weights_dict.get(poi, 0) for poi in nearby_pois)
+        return total_weight
+
+    # Ajouter une colonne pour la somme des poids des POI
+    merged_adresses_loyers['Nearby_POI_Weight'] = merged_adresses_loyers.apply(
+        calculate_poi_weights, tree=poi_tree, poi_df=poi_df_filtered, weights_dict=poi_weights, axis=1
+    )
+
+    print('[RUN PROCESS] - Separate DataFrame as data chunk')
+    # Écriture des résultats dans des fichiers CSV segmentés
+    max_file_size_bytes = max_file_size_gb * 1024 * 1024 * 1024
+    current_file_index = 1
+    current_file_size = 0
+    output_file = f"{output_prefix}_{current_file_index}.csv"
+    header_written = False
+
+    for chunk_start in range(0, len(merged_adresses_loyers), 10000):  # Traite 10 000 lignes à la fois
+        chunk = merged_adresses_loyers.iloc[chunk_start:chunk_start + 10000]
+        chunk_size_bytes = chunk.memory_usage(deep=True).sum()
+
+        # Si le fichier dépasse la taille maximale, crée un nouveau fichier
+        if current_file_size + chunk_size_bytes > max_file_size_bytes:
+            current_file_index += 1
+            output_file = f"{output_prefix}_{current_file_index}.csv"
+            current_file_size = 0
+            header_written = False
+
+        # Écrire le chunk dans le fichier actuel
+        chunk.to_csv(output_file, mode='a', header=not header_written, index=False, encoding='utf-8')
+        current_file_size += chunk_size_bytes
+        header_written = True
+
+        print(f"[END PROCESS] - Save chunk file : '{output_file}'.")
+
 
 
 if __name__=='__main__':
