@@ -1,4 +1,5 @@
 # AppartVisor
+![Alt Text](AppartVisor.png)
 
 # Script Execution Guide
 
