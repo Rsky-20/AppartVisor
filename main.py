@@ -56,14 +56,15 @@ if __name__=='__main__':
             utils.simplify_ban(input_file='data\\adresses-ban.csv', output_file='data\\simplified_ban.csv')
 
         if args.test == 'get_data_from_referenceloyer':
-            utils.get_data_from_referenceloyer(ban_path='data\\simplified_ban.csv',output_file='data\\loyers_paris_adresses.csv')
+            utils.get_data_from_referenceloyer(ban_path='AppartVisor\\data\\simplified_ban.csv',output_file='AppartVisor\\data\\test_loyers_paris_adresses.csv') #'data\\loyers_paris_adresses.csv'
 
         if args.test == 'get_unique_poi_types':
             poi_type_list = utils.get_unique_poi_types()
             print("Types uniques de POI :", poi_type_list)
 
         if args.test == 'merge_dataset':
-            t_utils.merge_dataset('data\\adresses-ban.csv', 'data\\poi_paris.csv', 'data\\loyers_paris_adresses.csv.old', 'dataset\\merged_data.csv', 1)
+            #t_utils.merge_dataset('data\\adresses-ban.csv', 'data\\poi_paris.csv', 'data\\loyers_paris_adresses.csv.old', 'dataset\\merged_data.csv', 1)
+            pass
             
         if args.test == 'print':
             print("[TEST] - Ceci est un print test")
